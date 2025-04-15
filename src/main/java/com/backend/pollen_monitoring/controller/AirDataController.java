@@ -17,23 +17,33 @@ public class AirDataController {
 
     @GetMapping("/pollution")
     public List<PollutionData> getPollutionData() {
-        // Récupérer les vraies données de pollen
-        Map<String, Double> pollenIndices = pollenService.fetchPollenIndices();
+        // Récupérer les données brutes de pollen
+        String pollenDataRaw = pollenService.fetchPollenData();
         
-        // Créer des données historiques (24 heures) mais avec les vraies données de pollen
-        List<PollutionData> data = new ArrayList<>();
-        LocalDateTime now = LocalDateTime.now();
-    
-        for (int i = 0; i < 24; i++) {
-            data.add(new PollutionData(
-                now.minusHours(23 - i),
-                Math.random() * 80,  // PM10 toujours simulé
-                Math.random() * 50,  // PM25 toujours simulé
-                pollenIndices        // Données de pollen réelles
-            ));
+        try {
+            // Créer une liste pour stocker les données
+            List<PollutionData> data = new ArrayList<>();
+            
+            // Utiliser le service pour extraire les données horaires
+            Map<LocalDateTime, Map<String, Double>> hourlyData = pollenService.extractHourlyPollenData(pollenDataRaw);
+            
+            // Convertir les données en objets PollutionData
+            for (Map.Entry<LocalDateTime, Map<String, Double>> entry : hourlyData.entrySet()) {
+                LocalDateTime timestamp = entry.getKey();
+                Map<String, Double> pollenValues = entry.getValue();
+                
+                // Créer un objet PollutionData avec uniquement les données de pollen (sans PM10/PM25 fictifs)
+                data.add(new PollutionData(timestamp, 0.0, 0.0, pollenValues));
+            }
+            
+            // Trier les données par timestamp
+            data.sort(Comparator.comparing(PollutionData::getTimestamp));
+            
+            return data;
+        } catch (Exception e) {
+            // En cas d'erreur, retourner une liste vide
+            return Collections.emptyList();
         }
-    
-        return data;
     }
 
     @GetMapping("/pollens")

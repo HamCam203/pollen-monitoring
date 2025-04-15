@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Graphiques de Pollen</title>
+    <link rel="stylesheet" href="/css/pollen-styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Graphiques de Pollen</h1>
+        
+        <div class="nav-links">
+            <a href="/api/pollen">Voir le tableau des données</a>
+        </div>
+        
+        <div class="location-selector">
+            <select id="location-select">
+                <option value="0">Sélectionner une localisation</option>
+            </select>
+        </div>
+        
+        <div id="location-info" class="location-info"></div>
+        <div id="loading" class="loading">Chargement des données...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <div class="chart-container">
+            <canvas id="pollen-chart"></canvas>
+        </div>
+        
+        <div class="chart-controls">
+            <div class="pollen-type-selector">
+                <label for="pollen-type">Type de pollen:</label>
+                <select id="pollen-type">
+                    <option value="all">Tous les types</option>
+                    <option value="alder_pollen">Aulne</option>
+                    <option value="birch_pollen">Bouleau</option>
+                    <option value="grass_pollen">Graminées</option>
+                    <option value="mugwort_pollen">Armoise</option>
+                    <option value="olive_pollen">Olivier</option>
+                    <option value="ragweed_pollen">Ambroisie</option>
+                </select>
+            </div>
+            
+            <div class="time-range-selector">
+                <label for="time-range">Période:</label>
+                <select id="time-range">
+                    <option value="24">24 heures</option>
+                    <option value="48">48 heures</option>
+                    <option value="72">72 heures</option>
+                    <option value="96">4 jours</option>
+                </select>
+            </div>
+        </div>
+        
+        <button id="toggle-debug" style="display: none;">Afficher les données brutes</button>
+        <div id="debug-data" class="debug"></div>
+    </div>
+
+    <script>
+        let pollenData = [];
+        let chart = null;
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchPollenData();
+            
+            document.getElementById('toggle-debug').addEventListener('click', function() {
+                const debugElement = document.getElementById('debug-data');
+                if (debugElement.style.display === 'none') {
+                    debugElement.style.display = 'block';
+                    this.textContent = 'Masquer les données brutes';
+                } else {
+                    debugElement.style.display = 'none';
+                    this.textContent = 'Afficher les données brutes';
+                }
+            });
+            
+            document.getElementById('location-select').addEventListener('change', function() {
+                const locationIndex = parseInt(this.value);
+                if (locationIndex >= 0 && pollenData.length > locationIndex) {
+                    updateChart(pollenData[locationIndex], locationIndex);
+                }
+            });
+            
+            document.getElementById('pollen-type').addEventListener('change', function() {
+                const locationIndex = parseInt(document.getElementById('location-select').value);
+                if (locationIndex >= 0 && pollenData.length > locationIndex) {
+                    updateChart(pollenData[locationIndex], locationIndex);
+                }
+            });
+            
+            document.getElementById('time-range').addEventListener('change', function() {
+                const locationIndex = parseInt(document.getElementById('location-select').value);
+                if (locationIndex >= 0 && pollenData.length > locationIndex) {
+                    updateChart(pollenData[locationIndex], locationIndex);
+                }
+            });
+        });
+
+        function fetchPollenData() {
+            fetch('/api/pollen/data')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Erreur lors de la récupération des données: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Stocker les données
+                    pollenData = data;
+                    
+                    // Afficher les données brutes pour le débogage
+                    document.getElementById('debug-data').textContent = JSON.stringify(data, null, 2);
+                    document.getElementById('toggle-debug').style.display = 'block';
+                    
+                    // Remplir le sélecteur de localisation
+                    const locationSelect = document.getElementById('location-select');
+                    locationSelect.innerHTML = ''; // Effacer les options existantes
+                    
+                    if (Array.isArray(data)) {
+                        data.forEach((location, index) => {
+                            const option = document.createElement('option');
+                            option.value = index;
+                            option.textContent = `Localisation ${index + 1}: ${location.latitude}, ${location.longitude}`;
+                            locationSelect.appendChild(option);
+                        });
+                        
+                        // Afficher la première localisation par défaut
+                        if (data.length > 0) {
+                            updateChart(data[0], 0);
+                        }
+                    } else {
+                        // Si ce n'est pas un tableau, essayer d'afficher directement
+                        try {
+                            updateChart(data, 0);
+                        } catch (error) {
+                            document.getElementById('error').style.display = 'block';
+                            document.getElementById('error').textContent = 'Format de données non reconnu: ' + error.message;
+                            document.getElementById('loading').style.display = 'none';
+                        }
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('error').style.display = 'block';
+                    document.getElementById('error').textContent = 'Erreur de récupération: ' + error.message;
+                    console.error('Erreur:', error);
+                });
+        }
+
+        function updateChart(data, locationIndex) {
+            const loadingElement = document.getElementById('loading');
+            const locationInfoElement = document.getElementById('location-info');
+            
+            // Afficher les informations de localisation
+            locationInfoElement.textContent = `Latitude: ${data.latitude}, Longitude: ${data.longitude}, Fuseau horaire: ${data.timezone}`;
+            
+            // Vérifier si les données sont au format attendu
+            if (!data.hourly) {
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = 'Format de données incorrect: pas de données horaires';
+                loadingElement.style.display = 'none';
+                return;
+            }
+            
+            const hourly = data.hourly;
+            const pollenTypes = {
+                'alder_pollen': 'Aulne',
+                'birch_pollen': 'Bouleau',
+                'grass_pollen': 'Graminées',
+                'mugwort_pollen': 'Armoise',
+                'olive_pollen': 'Olivier',
+                'ragweed_pollen': 'Ambroisie'
+            };
+            
+            // Obtenir le type de pollen sélectionné
+            const selectedPollenType = document.getElementById('pollen-type').value;
+            
+            // Obtenir la période sélectionnée
+            const timeRange = parseInt(document.getElementById('time-range').value);
+            
+            // Préparer les données pour le graphique
+            const times = hourly.time.slice(0, timeRange);
+            const datasets = [];
+            
+            // Déterminer quels types de pollen afficher
+            const typesToShow = selectedPollenType === 'all' 
+                ? Object.keys(pollenTypes) 
+                : [selectedPollenType];
+            
+            // Couleurs pour les différents types de pollen
+            const colors = {
+                'alder_pollen': 'rgb(255, 99, 132)',
+                'birch_pollen': 'rgb(54, 162, 235)',
+                'grass_pollen': 'rgb(75, 192, 192)',
+                'mugwort_pollen': 'rgb(255, 206, 86)',
+                'olive_pollen': 'rgb(153, 102, 255)',
+                'ragweed_pollen': 'rgb(255, 159, 64)'
+            };
+            
+            // Créer un dataset pour chaque type de pollen sélectionné
+            for (const type of typesToShow) {
+                if (hourly[type]) {
+                    const values = hourly[type].slice(0, timeRange).map(value => value === null ? null : value);
+                    
+                    datasets.push({
+                        label: pollenTypes[type],
+                        data: values,
+                        borderColor: colors[type],
+                        backgroundColor: colors[type] + '33', // Ajouter transparence
+                        tension: 0.1,
+                        fill: false
+                    });
+                }
+            }
+            
+            // Formater les dates pour l'affichage
+            const labels = times.map(time => {
+                const date = new Date(time);
+                return date.toLocaleString('fr-FR', { 
+                    day: '2-digit', 
+                    month: '2-digit', 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                });
+            });
+            
+            // Créer ou mettre à jour le graphique
+            const ctx = document.getElementById('pollen-chart').getContext('2d');
+            
+            if (chart) {
+                chart.destroy();
+            }
+            
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Évolution des niveaux de pollen',
+                            font: {
+                                size: 16
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        },
+                        legend: {
+                            position: 'top',
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date et heure'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Concentration (grains/m³)'
+                            },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+            
+            loadingElement.style.display = 'none';
+            document.getElementById('error').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
