@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Données de Pollen</title>
+    <link rel="stylesheet" href="/css/pollen-styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Données de Pollen</h1>
+        <div class="location-selector">
+            <select id="location-select">
+                <option value="0">Sélectionner une localisation</option>
+            </select>
+        </div>
+        <div id="location-info" class="location-info"></div>
+        <div id="loading" class="loading">Chargement des données...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        <table id="pollen-table" style="display: none;">
+            <thead>
+                <tr>
+                    <th>Type de Pollen</th>
+                    <th>Indice</th>
+                    <th>Niveau</th>
+                </tr>
+            </thead>
+            <tbody id="pollen-data">
+                <!-- Les données seront insérées ici -->
+            </tbody>
+        </table>
+        <button id="toggle-debug" style="display: none;">Afficher les données brutes</button>
+        <div id="debug-data" class="debug"></div>
+    </div>
+
+    <script>
+        let pollenData = [];
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchPollenData();
+            
+            document.getElementById('toggle-debug').addEventListener('click', function() {
+                const debugElement = document.getElementById('debug-data');
+                if (debugElement.style.display === 'none') {
+                    debugElement.style.display = 'block';
+                    this.textContent = 'Masquer les données brutes';
+                } else {
+                    debugElement.style.display = 'none';
+                    this.textContent = 'Afficher les données brutes';
+                }
+            });
+            
+            document.getElementById('location-select').addEventListener('change', function() {
+                const locationIndex = parseInt(this.value);
+                if (locationIndex >= 0 && pollenData.length > locationIndex) {
+                    displayPollenData(pollenData[locationIndex], locationIndex);
+                }
+            });
+        });
+
+        function fetchPollenData() {
+            fetch('/api/pollen/data')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Erreur lors de la récupération des données: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Stocker les données
+                    pollenData = data;
+                    
+                    // Afficher les données brutes pour le débogage
+                    document.getElementById('debug-data').textContent = JSON.stringify(data, null, 2);
+                    document.getElementById('toggle-debug').style.display = 'block';
+                    
+                    // Remplir le sélecteur de localisation
+                    const locationSelect = document.getElementById('location-select');
+                    locationSelect.innerHTML = ''; // Effacer les options existantes
+                    
+                    if (Array.isArray(data)) {
+                        data.forEach((location, index) => {
+                            const option = document.createElement('option');
+                            option.value = index;
+                            option.textContent = `Localisation ${index + 1}: ${location.latitude}, ${location.longitude}`;
+                            locationSelect.appendChild(option);
+                        });
+                        
+                        // Afficher la première localisation par défaut
+                        if (data.length > 0) {
+                            displayPollenData(data[0], 0);
+                        }
+                    } else {
+                        // Si ce n'est pas un tableau, essayer d'afficher directement
+                        try {
+                            displayPollenData(data, 0);
+                        } catch (error) {
+                            document.getElementById('error').style.display = 'block';
+                            document.getElementById('error').textContent = 'Format de données non reconnu: ' + error.message;
+                            document.getElementById('loading').style.display = 'none';
+                        }
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('error').style.display = 'block';
+                    document.getElementById('error').textContent = 'Erreur de récupération: ' + error.message;
+                    console.error('Erreur:', error);
+                });
+        }
+
+        function displayPollenData(data, locationIndex) {
+            const tableBody = document.getElementById('pollen-data');
+            const loadingElement = document.getElementById('loading');
+            const tableElement = document.getElementById('pollen-table');
+            const locationInfoElement = document.getElementById('location-info');
+            
+            // Afficher les informations de localisation
+            locationInfoElement.textContent = `Latitude: ${data.latitude}, Longitude: ${data.longitude}, Fuseau horaire: ${data.timezone}`;
+            
+            // Vérifier si les données sont au format attendu
+            if (!data.hourly) {
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = 'Format de données incorrect: pas de données horaires';
+                loadingElement.style.display = 'none';
+                return;
+            }
+            
+            const hourly = data.hourly;
+            const pollenTypes = {
+                'alder_pollen': 'Aulne',
+                'birch_pollen': 'Bouleau',
+                'grass_pollen': 'Graminées',
+                'mugwort_pollen': 'Armoise',
+                'olive_pollen': 'Olivier',
+                'ragweed_pollen': 'Ambroisie'
+            };
+            
+            // Créer les lignes du tableau
+            let tableContent = '';
+            let hasAnyData = false;
+            
+            for (const [key, label] of Object.entries(pollenTypes)) {
+                // Vérifier si la clé existe et contient des données
+                if (hourly[key] && hourly[key].length > 0) {
+                    // Filtrer les valeurs non nulles
+                    const validValues = hourly[key].filter(value => value !== null && value !== undefined);
+                    
+                    if (validValues.length > 0) {
+                        hasAnyData = true;
+                        const value = validValues[0]; // Prendre la première valeur non nulle
+                        const level = getPollenLevel(value);
+                        
+                        tableContent += `
+                            <tr>
+                                <td>${label}</td>
+                                <td>${value}</td>
+                                <td>
+                                    <span class="pollen-level level-${level.toLowerCase()}"></span>
+                                    ${level}
+                                </td>
+                            </tr>
+                        `;
+                    }
+                }
+            }
+            
+            if (!hasAnyData) {
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = 'Aucune donnée de pollen trouvée pour cette localisation';
+                loadingElement.style.display = 'none';
+                tableElement.style.display = 'none';
+                return;
+            }
+            
+            tableBody.innerHTML = tableContent;
+            loadingElement.style.display = 'none';
+            document.getElementById('error').style.display = 'none';
+            tableElement.style.display = 'table';
+        }
+        
+        function getPollenLevel(value) {
+            if (value < 1) {
+                return 'Faible';
+            } else if (value < 3) {
+                return 'Moyen';
+            } else {
+                return 'Élevé';
+            }
+        }
+    </script>
+</body>
+</html>
