@@ -17,18 +17,22 @@ public class AirDataController {
 
     @GetMapping("/pollution")
     public List<PollutionData> getPollutionData() {
-        // Données fictives en attendant les vraies (InfluxDB, etc.)
+        // Récupérer les vraies données de pollen
+        Map<String, Double> pollenIndices = pollenService.fetchPollenIndices();
+        
+        // Créer des données historiques (24 heures) mais avec les vraies données de pollen
         List<PollutionData> data = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
-
+    
         for (int i = 0; i < 24; i++) {
             data.add(new PollutionData(
                 now.minusHours(23 - i),
-                Math.random() * 80,
-                Math.random() * 50
+                Math.random() * 80,  // PM10 toujours simulé
+                Math.random() * 50,  // PM25 toujours simulé
+                pollenIndices        // Données de pollen réelles
             ));
         }
-
+    
         return data;
     }
 
