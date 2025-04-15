@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Visualisation Pollution et Pollen</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h2>Évolution PM10 / PM2.5 et Pollen dans le temps</h2>
+  <canvas id="lineChart" width="600" height="300"></canvas>
+
+  <script>
+    // Fonction pour gérer les erreurs de récupération de données
+    const fetchData = (url) => {
+      return fetch(url)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Erreur de récupération des données: ${response.status}`);
+          }
+          return response.json();
+        });
+    };
+
+    // Récupération des données
+    Promise.all([fetchData('/api/pollen'), fetchData('/api/pollution')])
+      .then(([pollenData, pollutionData]) => {
+        const labels = pollutionData.map(d => d.timestamp);
+        const pm10 = pollutionData.map(d => d.pm10);
+        const pm25 = pollutionData.map(d => d.pm25);
+
+        // Pollen indices (vérifie que ce sont bien des tableaux)
+        const alderPollen = Array.isArray(pollenData.alder_pollen) ? pollenData.alder_pollen : [];
+        const birchPollen = Array.isArray(pollenData.birch_pollen) ? pollenData.birch_pollen : [];
+        const grassPollen = Array.isArray(pollenData.grass_pollen) ? pollenData.grass_pollen : [];
+
+        // Création du graphique
+        new Chart(document.getElementById('lineChart'), {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'PM10',
+                data: pm10,
+                borderColor: 'rgba(255, 99, 132, 1)',
+                fill: false
+              },
+              {
+                label: 'PM2.5',
+                data: pm25,
+                borderColor: 'rgba(54, 162, 235, 1)',
+                fill: false
+              },
+              {
+                label: 'Alder Pollen',
+                data: alderPollen,
+                borderColor: 'rgba(153, 102, 255, 1)',
+                fill: false
+              },
+              {
+                label: 'Birch Pollen',
+                data: birchPollen,
+                borderColor: 'rgba(75, 192, 192, 1)',
+                fill: false
+              },
+              {
+                label: 'Grass Pollen',
+                data: grassPollen,
+                borderColor: 'rgba(255, 159, 64, 1)',
+                fill: false
+              }
+            ]
+          }
+        });
+      })
+      .catch(error => {
+        console.error('Erreur lors de la récupération des données:', error);
+        alert('Une erreur est survenue lors de la récupération des données.');
+      });
+  </script>
+</body>
+</html>

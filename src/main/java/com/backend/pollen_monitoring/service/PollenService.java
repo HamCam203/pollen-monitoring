@@ -13,7 +13,6 @@ import org.springframework.web.client.RestTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-
 @Service
 public class PollenService {
 
@@ -29,8 +28,11 @@ public class PollenService {
     private final RestTemplate restTemplate = new RestTemplate();
 
     public String fetchPollenData() {
-        String url = String.format("%s?latitude=%f&longitude=%f&hourly=pm10,pm2_5", apiUrl, latitude, longitude);
-        
+        String url = String.format(
+            "%s?latitude=%f&longitude=%f&hourly=alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen&forecast_days=4&timezone=auto",
+            apiUrl, latitude, longitude
+        );
+
         ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
 
         if (response.getStatusCode().is2xxSuccessful()) {
@@ -41,37 +43,43 @@ public class PollenService {
     }
 
     public Map<String, Double> fetchPollenIndices() {
-    String url = String.format(
-        "%s?latitude=%f&longitude=%f&hourly=pm10,pm2_5,allergens_tree_pollen,allergens_weed_pollen,allergens_grass_pollen",
-        apiUrl, latitude, longitude
-    );
+        String url = String.format(
+            "%s?latitude=%f&longitude=%f&hourly=alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen&forecast_days=4&timezone=auto",
+            apiUrl, latitude, longitude
+        );
 
-    ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
+        ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
 
-    if (!response.getStatusCode().is2xxSuccessful()) {
-        throw new RuntimeException("Erreur lors de l'appel à Open-Meteo: " + response.getStatusCode());
-    }
-
-    try {
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode root = mapper.readTree(response.getBody());
-        JsonNode hourly = root.path("hourly");
-
-        Map<String, Double> result = new HashMap<>();
-        List<String> fields = Arrays.asList("pm10", "pm2_5", "allergens_tree_pollen", "allergens_weed_pollen", "allergens_grass_pollen");
-
-        for (String field : fields) {
-            JsonNode array = hourly.path(field);
-            if (array.isArray() && array.size() > 0) {
-                double latest = array.get(0).asDouble(); // prend la première valeur disponible
-                result.put(field, latest);
-            }
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            throw new RuntimeException("Erreur lors de l'appel à Open-Meteo: " + response.getStatusCode());
         }
 
-        return result;
-    } catch (Exception e) {
-        throw new RuntimeException("Erreur de parsing JSON Open-Meteo", e);
-    }   
-    }
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(response.getBody());
+            JsonNode hourly = root.path("hourly");
 
+            Map<String, Double> result = new HashMap<>();
+            List<String> pollenFields = Arrays.asList(
+                "alder_pollen",
+                "birch_pollen",
+                "grass_pollen",
+                "mugwort_pollen",
+                "olive_pollen",
+                "ragweed_pollen"
+            );
+
+            for (String field : pollenFields) {
+                JsonNode array = hourly.path(field);
+                if (array.isArray() && array.size() > 0) {
+                    double firstValue = array.get(0).asDouble(); // première valeur disponible
+                    result.put(field, firstValue);
+                }
+            }
+
+            return result;
+        } catch (Exception e) {
+            throw new RuntimeException("Erreur de parsing JSON Open-Meteo", e);
+        }
+    }
 }
