@@ -60,7 +60,7 @@ pollen-monitoring/
 
 - Java 11 ou supérieur
 - Maven
-- Compte Open-Meteo (gratuit)
+- Open-Meteo (gratuit, pas besoin de clé API)
 
 
 ### Configuration
@@ -68,7 +68,7 @@ pollen-monitoring/
 1. Clonez le dépôt :
 
 ```shellscript
-git clone https://github.com/votre-nom/pollen-monitoring.git
+git clone https://github.com/HamCam203/pollen-monitoring.git
 cd pollen-monitoring
 ```
 
