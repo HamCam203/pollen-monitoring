@@ -19,20 +19,28 @@ public class PollenMetrics {
     public PollenMetrics(PollenService pollenService, MeterRegistry registry) {
         this.pollenService = pollenService;
         this.registry = registry;
+        
+        // Enregistrer les métriques dès le démarrage
+        registerPollenMetrics();
     }
 
     @Scheduled(fixedRate = 3600000) // toutes les heures
     public void updateMetrics() {
+        registerPollenMetrics();
+    }
+    
+    private void registerPollenMetrics() {
         try {
             Map<String, Double> indices = pollenService.fetchPollenIndices();
-            indices.forEach((type, value) -> 
-                Gauge.builder("pollen_" + type + "_index", value::doubleValue)
+            indices.forEach((type, value) -> {
+                // Utiliser des gauges avec des tags pour faciliter le filtrage dans Grafana
+                Gauge.builder("pollen.index", () -> value)
+                     .tag("type", type)
                      .description("Indice de pollen pour " + type)
-                     .register(registry)
-            );
+                     .register(registry);
+            });
         } catch (Exception e) {
             System.err.println("Erreur de récupération des données pollen: " + e.getMessage());
         }
     }
 }
-
