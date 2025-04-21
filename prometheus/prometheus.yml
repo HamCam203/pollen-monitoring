@@ -5,4 +5,4 @@ scrape_configs:
   - job_name: 'pollen-monitoring'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['host.docker.internal:8080']
+      - targets: ['pollen-app:8080']  # Utilisez le nom du service et le port correct
